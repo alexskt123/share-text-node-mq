@@ -2,32 +2,36 @@ import { send } from '../../lib/sendEmail';
 import { config } from '../../config';
 
 export default async (req, res) => {
-  const { to, content } = req.query
-  const open = require('amqplib').connect(process.env.CLOUDAMQP_URL);
+  const { to, content } = req.query;
+  let result = 'OK';
 
-  // Publisher
-  open.then(function (conn) {
-    return conn.createChannel();
-  }).then(function (ch) {
-    return ch.assertQueue(config.queue).then(function (ok) {
-      return ch.sendToQueue(config.queue, Buffer.from(content));
-    });
-  }).catch(console.warn);
+  if (to && content) {
+    try {
+      const queue = Buffer.from(JSON.stringify({ to, content }));
 
-  // Consumer
-  open.then(function (conn) {
-    return conn.createChannel();
-  }).then(function (ch) {
-    return ch.assertQueue(config.queue).then(function (ok) {
-      return ch.consume(config.queue, function (msg) {
+      const open = await require('amqplib').connect(process.env.CLOUDAMQP_URL);
+      const ch = await open.createChannel();
+      await ch.assertQueue(config.queue);
+
+      // Publisher
+      ch.sendToQueue(config.queue, queue);
+
+      // Consumer
+      await ch.consume(config.queue, function (msg) {
         if (msg !== null) {
-          send({ to, msg });
+          const { to, content } = JSON.parse(msg.content.toString());
+          console.log({ to, content })
+          send({ to, content });
           ch.ack(msg);
         }
       });
-    });
-  }).catch(console.warn);
+    } catch (error) {
+      result = error.toString();
+    }
+  } else {
+    result = 'missing to/content params';
+  }
 
   res.statusCode = 200
-  res.json({ response: 'OK' })
+  res.json({ response: result })
 }
