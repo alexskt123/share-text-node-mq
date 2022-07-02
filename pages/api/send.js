@@ -6,7 +6,7 @@ export default async (req, res) => {
 
   if (to && content) {
     try {
-      send({ to, content });
+      result = await send({ to, content });
     } catch (error) {
       result = error.toString();
     }
